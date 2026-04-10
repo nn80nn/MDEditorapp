@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "n.learn.mdeditorapp"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -48,6 +48,28 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons)
+
+    // navigation
+    implementation(libs.navigation.compose)
+
+    // viewmodel
+    implementation(libs.lifecycle.viewmodel.compose)
+
+    // network
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.gson)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+    implementation(libs.gson)
+
+    // coroutines
+    implementation(libs.coroutines.android)
+
+    // charts
+    implementation(libs.mpandroidchart)
+
+    // tests
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
