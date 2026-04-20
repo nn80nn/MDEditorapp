@@ -1,8 +1,5 @@
 package n.learn.mdeditorapp.ui.screens
 
-import android.graphics.Bitmap
-import android.util.Base64
-import android.view.View
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,13 +9,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.github.mikephil.charting.charts.BarChart
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.utils.ColorTemplate
-import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,11 +25,13 @@ fun ChartBuilderScreen(
     onInsertChart: (String) -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     var chartType by remember { mutableStateOf("bar") }
     var labelsInput by remember { mutableStateOf("Янв,Фев,Мар,Апр") }
     var valuesInput by remember { mutableStateOf("10,25,15,30") }
     var chartTitle by remember { mutableStateOf("Мой график") }
-    var chartViewRef by remember { mutableStateOf<View?>(null) }
+    var barChartRef by remember { mutableStateOf<BarChart?>(null) }
+    var lineChartRef by remember { mutableStateOf<LineChart?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     val labels = labelsInput.split(",").map { it.trim() }.filter { it.isNotEmpty() }
@@ -103,7 +104,6 @@ fun ChartBuilderScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // превью графика
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -112,10 +112,10 @@ fun ChartBuilderScreen(
                 if (chartType == "bar") {
                     AndroidView(
                         factory = { ctx ->
-                            BarChart(ctx).also { chartViewRef = it }
+                            BarChart(ctx).also { barChartRef = it }
                         },
                         update = { chart ->
-                            chartViewRef = chart
+                            barChartRef = chart
                             val entries = values.mapIndexed { i, v -> BarEntry(i.toFloat(), v) }
                             val dataset = BarDataSet(entries, chartTitle).apply {
                                 colors = ColorTemplate.MATERIAL_COLORS.toList()
@@ -130,10 +130,10 @@ fun ChartBuilderScreen(
                 } else {
                     AndroidView(
                         factory = { ctx ->
-                            LineChart(ctx).also { chartViewRef = it }
+                            LineChart(ctx).also { lineChartRef = it }
                         },
                         update = { chart ->
-                            chartViewRef = chart
+                            lineChartRef = chart
                             val entries = values.mapIndexed { i, v -> Entry(i.toFloat(), v) }
                             val dataset = LineDataSet(entries, chartTitle).apply {
                                 color = ColorTemplate.MATERIAL_COLORS[0]
@@ -158,21 +158,28 @@ fun ChartBuilderScreen(
 
             Button(
                 onClick = {
-                    val view = chartViewRef
-                    if (view == null || values.isEmpty()) {
+                    if (values.isEmpty()) {
                         error = "нет данных для графика"
                         return@Button
                     }
                     try {
-                        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-                        val canvas = android.graphics.Canvas(bitmap)
-                        view.draw(canvas)
+                        // используем getChartBitmap() — надёжнее чем ручной draw
+                        val bitmap = if (chartType == "bar") {
+                            barChartRef?.chartBitmap
+                        } else {
+                            lineChartRef?.chartBitmap
+                        }
 
-                        val baos = ByteArrayOutputStream()
-                        bitmap.compress(Bitmap.CompressFormat.PNG, 90, baos)
-                        val base64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+                        if (bitmap == null) {
+                            error = "график ещё не готов, попробуй ещё раз"
+                            return@Button
+                        }
 
-                        onInsertChart("data:image/png;base64,$base64")
+                        val imgDir = File(context.filesDir, "images").also { it.mkdirs() }
+                        val file = File(imgDir, "chart_${System.currentTimeMillis()}.png")
+                        FileOutputStream(file).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 90, it) }
+
+                        onInsertChart("images/${file.name}")
                     } catch (e: Exception) {
                         error = "не удалось сохранить: ${e.message}"
                     }

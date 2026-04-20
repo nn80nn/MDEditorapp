@@ -2,12 +2,20 @@ package n.learn.mdeditorapp.util
 
 object MarkdownHtmlConverter {
 
-    fun toHtml(markdown: String): String {
-        val escaped = markdown
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
+    // filesDir — абсолютный путь к filesDir приложения, нужен для локальных картинок
+    fun toHtml(markdown: String, filesDir: String? = null): String {
+        // заменяем relative пути изображений на абсолютные file:// URI
+        val processedMarkdown = if (filesDir != null) {
+            markdown.replace(
+                Regex("!\\[([^\\]]*)\\]\\((images/[^)]+)\\)")
+            ) { match ->
+                val alt = match.groupValues[1]
+                val relativePath = match.groupValues[2]
+                "![$alt](file://$filesDir/$relativePath)"
+            }
+        } else {
+            markdown
+        }
 
         return """
             <!DOCTYPE html>
@@ -28,7 +36,7 @@ object MarkdownHtmlConverter {
                     code { background: #333; padding: 2px 4px; border-radius: 4px; }
                     pre { background: #333; padding: 12px; border-radius: 6px; overflow-x: auto; }
                     blockquote { border-left: 4px solid #555; margin: 0; padding-left: 16px; color: #aaa; }
-                    img { max-width: 100%; }
+                    img { max-width: 100%; border-radius: 4px; }
                     h1, h2, h3 { color: #fff; }
                     a { color: #4fc3f7; }
                 </style>
@@ -37,7 +45,7 @@ object MarkdownHtmlConverter {
                 <div id="content"></div>
                 <script>
                     var md = window.markdownit({ html: false, linkify: true, typographer: true });
-                    var raw = atob("${java.util.Base64.getEncoder().encodeToString(markdown.toByteArray())}");
+                    var raw = atob("${java.util.Base64.getEncoder().encodeToString(processedMarkdown.toByteArray())}");
                     document.getElementById('content').innerHTML = md.render(raw);
                     if (window.MathJax) MathJax.typeset();
                 </script>

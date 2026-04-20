@@ -3,7 +3,6 @@ package n.learn.mdeditorapp.ui.screens
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
@@ -24,18 +23,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import n.learn.mdeditorapp.ui.components.FormulaDialog
 import n.learn.mdeditorapp.ui.components.MarkdownPreviewView
 import n.learn.mdeditorapp.viewmodel.EditorViewModel
-import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(
     docId: Int,
+    navEntry: NavBackStackEntry? = null,
     onOpenChartBuilder: () -> Unit,
     onBack: () -> Unit,
     vm: EditorViewModel = viewModel()
@@ -50,6 +52,19 @@ fun EditorScreen(
 
     var showFormulaDialog by remember { mutableStateOf(false) }
 
+    // читаем вставку графика из savedStateHandle
+    val chartPath by navEntry?.savedStateHandle
+        ?.getStateFlow<String?>("chart_image_path", null)
+        ?.collectAsState()
+        ?: remember { mutableStateOf(null) }
+
+    LaunchedEffect(chartPath) {
+        chartPath?.let { path ->
+            vm.insertText("\n![график]($path)\n")
+            navEntry?.savedStateHandle?.remove<String>("chart_image_path")
+        }
+    }
+
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -60,7 +75,7 @@ fun EditorScreen(
                     val original = BitmapFactory.decodeStream(inputStream)
                     inputStream?.close()
                     if (original != null) {
-                        val maxSize = 800
+                        val maxSize = 1024
                         val scaled = if (original.width > maxSize || original.height > maxSize) {
                             val ratio = maxSize.toFloat() / maxOf(original.width, original.height)
                             Bitmap.createScaledBitmap(
@@ -70,11 +85,15 @@ fun EditorScreen(
                                 true
                             )
                         } else original
-                        val baos = ByteArrayOutputStream()
-                        scaled.compress(Bitmap.CompressFormat.JPEG, 80, baos)
-                        val base64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+
+                        val imgDir = File(context.filesDir, "images").also { it.mkdirs() }
+                        val imgFile = File(imgDir, "img_${System.currentTimeMillis()}.jpg")
+                        FileOutputStream(imgFile).use { out ->
+                            scaled.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                        }
+
                         withContext(Dispatchers.Main) {
-                            vm.insertText("\n![изображение](data:image/jpeg;base64,$base64)\n")
+                            vm.insertText("\n![изображение](images/${imgFile.name})\n")
                         }
                     }
                 } catch (e: Exception) {

@@ -45,6 +45,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private var autosaveJob: Job? = null
 
     fun loadDocument(docId: Int) {
+        if (currentDoc?.id == docId) return  // уже загружен, не показывать черновик повторно
         viewModelScope.launch {
             val doc = storage.getDocumentById(docId) ?: return@launch
             currentDoc = doc

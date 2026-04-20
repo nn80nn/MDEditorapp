@@ -1,6 +1,7 @@
 package n.learn.mdeditorapp.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -40,6 +41,7 @@ fun AppNavigation(startLoggedIn: Boolean) {
             val docId = backStack.arguments?.getInt("docId") ?: return@composable
             EditorScreen(
                 docId = docId,
+                navEntry = backStack,
                 onOpenChartBuilder = { navController.navigate("chart/$docId") },
                 onBack = { navController.popBackStack() }
             )
