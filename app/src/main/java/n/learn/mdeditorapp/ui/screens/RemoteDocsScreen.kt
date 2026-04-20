@@ -103,17 +103,24 @@ fun RemoteDocsScreen(
                                         scope.launch {
                                             downloading = doc.id
                                             try {
+                                                // если уже скачали — просто открываем
+                                                val existing = storage.getDocumentByName(doc.name)
+                                                if (existing != null) {
+                                                    onOpenDocument(existing.id)
+                                                    downloading = null
+                                                    return@launch
+                                                }
                                                 val token = session.getBearerToken() ?: return@launch
                                                 val resp = api.downloadDocument(token, doc.id)
                                                 if (resp.isSuccessful) {
                                                     val dir = File(context.filesDir, "documents")
                                                     dir.mkdirs()
-                                                    val file = File(dir, "${System.currentTimeMillis()}_${doc.name}")
+                                                    val file = File(dir, doc.name)
                                                     resp.body()?.byteStream()?.use { input ->
                                                         file.outputStream().use { output -> input.copyTo(output) }
                                                     }
                                                     val entity = storage.insertDocument(
-                                                        DocumentEntity(name = doc.name, filePath = file.absolutePath)
+                                                        DocumentEntity(name = doc.name, filePath = file.absolutePath, remoteId = doc.id)
                                                     )
                                                     onOpenDocument(entity.id)
                                                 } else {

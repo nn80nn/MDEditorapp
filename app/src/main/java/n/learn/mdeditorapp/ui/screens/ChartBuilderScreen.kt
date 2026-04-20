@@ -1,6 +1,7 @@
 package n.learn.mdeditorapp.ui.screens
 
 import android.graphics.Bitmap
+import android.util.Base64
 import android.view.View
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -11,15 +12,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.github.mikephil.charting.charts.BarChart
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.utils.ColorTemplate
-import java.io.File
-import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,7 +26,6 @@ fun ChartBuilderScreen(
     onInsertChart: (String) -> Unit,
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
     var chartType by remember { mutableStateOf("bar") }
     var labelsInput by remember { mutableStateOf("Янв,Фев,Мар,Апр") }
     var valuesInput by remember { mutableStateOf("10,25,15,30") }
@@ -170,12 +168,11 @@ fun ChartBuilderScreen(
                         val canvas = android.graphics.Canvas(bitmap)
                         view.draw(canvas)
 
-                        val dir = File(context.cacheDir, "charts")
-                        dir.mkdirs()
-                        val file = File(dir, "chart_${System.currentTimeMillis()}.png")
-                        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                        val baos = ByteArrayOutputStream()
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 90, baos)
+                        val base64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
 
-                        onInsertChart(file.absolutePath)
+                        onInsertChart("data:image/png;base64,$base64")
                     } catch (e: Exception) {
                         error = "не удалось сохранить: ${e.message}"
                     }

@@ -106,6 +106,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             saveNow()
             try {
+                // если уже загружали — удаляем старую версию на сервере
+                if (doc.remoteId != null) {
+                    api.deleteDocument(token, doc.remoteId)
+                }
                 val file = File(doc.filePath)
                 val namePart = doc.name.toRequestBody("text/plain".toMediaTypeOrNull())
                 val filePart = MultipartBody.Part.createFormData(
@@ -113,7 +117,17 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                     file.asRequestBody("text/markdown".toMediaTypeOrNull())
                 )
                 val resp = api.uploadDocument(token, namePart, filePart)
-                _uploadStatus.value = if (resp.isSuccessful) "загружено на сервер" else "ошибка загрузки"
+                if (resp.isSuccessful) {
+                    val remoteDoc = resp.body()
+                    if (remoteDoc != null) {
+                        val updated = doc.copy(remoteId = remoteDoc.id, updatedAt = System.currentTimeMillis())
+                        currentDoc = updated
+                        storage.updateDocument(updated)
+                    }
+                    _uploadStatus.value = "загружено на сервер"
+                } else {
+                    _uploadStatus.value = "ошибка загрузки"
+                }
             } catch (e: Exception) {
                 _uploadStatus.value = "нет соединения"
             }

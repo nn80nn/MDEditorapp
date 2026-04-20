@@ -1,9 +1,14 @@
 package n.learn.mdeditorapp.ui.screens
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -17,12 +22,15 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import n.learn.mdeditorapp.ui.components.FormulaDialog
 import n.learn.mdeditorapp.ui.components.MarkdownPreviewView
 import n.learn.mdeditorapp.viewmodel.EditorViewModel
+import java.io.ByteArrayOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +41,7 @@ fun EditorScreen(
     vm: EditorViewModel = viewModel()
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val content by vm.content.collectAsStateWithLifecycle()
     val docName by vm.documentName.collectAsStateWithLifecycle()
     val showPreview by vm.showPreview.collectAsStateWithLifecycle()
@@ -44,9 +53,34 @@ fun EditorScreen(
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
-            val fileName = it.lastPathSegment ?: "image"
-            vm.insertText("\n![изображение]($fileName)\n")
+        uri?.let { imageUri ->
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val inputStream = context.contentResolver.openInputStream(imageUri)
+                    val original = BitmapFactory.decodeStream(inputStream)
+                    inputStream?.close()
+                    if (original != null) {
+                        val maxSize = 800
+                        val scaled = if (original.width > maxSize || original.height > maxSize) {
+                            val ratio = maxSize.toFloat() / maxOf(original.width, original.height)
+                            Bitmap.createScaledBitmap(
+                                original,
+                                (original.width * ratio).toInt(),
+                                (original.height * ratio).toInt(),
+                                true
+                            )
+                        } else original
+                        val baos = ByteArrayOutputStream()
+                        scaled.compress(Bitmap.CompressFormat.JPEG, 80, baos)
+                        val base64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+                        withContext(Dispatchers.Main) {
+                            vm.insertText("\n![изображение](data:image/jpeg;base64,$base64)\n")
+                        }
+                    }
+                } catch (e: Exception) {
+                    // игнорируем
+                }
+            }
         }
     }
 
@@ -69,6 +103,7 @@ fun EditorScreen(
     }
 
     Scaffold(
+        modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
                 title = { Text(docName, maxLines = 1) },
@@ -90,15 +125,6 @@ fun EditorScreen(
                 }
             )
         },
-        bottomBar = {
-            if (!showPreview) {
-                EditorBottomBar(
-                    onInsertFormula = { showFormulaDialog = true },
-                    onInsertImage = { imagePicker.launch("image/*") },
-                    onBuildChart = onOpenChartBuilder
-                )
-            }
-        },
         snackbarHost = {
             uploadStatus?.let {
                 Snackbar(
@@ -108,23 +134,45 @@ fun EditorScreen(
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-            if (showPreview) {
-                MarkdownPreviewView(markdown = content)
-            } else {
-                BasicTextField(
-                    value = content,
-                    onValueChange = { vm.updateContent(it) },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    textStyle = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+        ) {
+            if (!showPreview) {
+                EditorToolbar(
+                    onInsertFormula = { showFormulaDialog = true },
+                    onInsertImage = { imagePicker.launch("image/*") },
+                    onBuildChart = onOpenChartBuilder
                 )
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                if (showPreview) {
+                    MarkdownPreviewView(markdown = content, modifier = Modifier.fillMaxSize())
+                } else {
+                    BasicTextField(
+                        value = content,
+                        onValueChange = { vm.updateContent(it) },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        textStyle = TextStyle(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
+                    )
+                }
+            }
+
+            if (!showPreview) {
+                SymbolRow(onInsert = { vm.insertText(it) })
             }
         }
     }
@@ -132,7 +180,7 @@ fun EditorScreen(
     if (showFormulaDialog) {
         FormulaDialog(
             onInsert = { formula ->
-                vm.insertText("$$${formula}$$")
+                vm.insertText("\n$$${formula}$$\n")
                 showFormulaDialog = false
             },
             onDismiss = { showFormulaDialog = false }
@@ -141,32 +189,91 @@ fun EditorScreen(
 }
 
 @Composable
-private fun EditorBottomBar(
+private fun EditorToolbar(
     onInsertFormula: () -> Unit,
     onInsertImage: () -> Unit,
     onBuildChart: () -> Unit
 ) {
-    BottomAppBar {
+    Surface(
+        tonalElevation = 2.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onInsertFormula) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Functions, contentDescription = "формула")
-                    Text("Формула", style = MaterialTheme.typography.labelSmall)
-                }
+            OutlinedButton(
+                onClick = onInsertFormula,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Icon(Icons.Default.Functions, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Формула", style = MaterialTheme.typography.labelMedium)
             }
-            IconButton(onClick = onInsertImage) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Image, contentDescription = "изображение")
-                    Text("Фото", style = MaterialTheme.typography.labelSmall)
-                }
+            OutlinedButton(
+                onClick = onInsertImage,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Фото", style = MaterialTheme.typography.labelMedium)
             }
-            IconButton(onClick = onBuildChart) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.BarChart, contentDescription = "график")
-                    Text("График", style = MaterialTheme.typography.labelSmall)
+            OutlinedButton(
+                onClick = onBuildChart,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Icon(Icons.Default.BarChart, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("График", style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SymbolRow(onInsert: (String) -> Unit) {
+    val symbols = listOf(
+        "#" to "# ",
+        "##" to "## ",
+        "###" to "### ",
+        "**b**" to "****",
+        "*i*" to "**",
+        "`" to "``",
+        "```" to "\n```\n\n```\n",
+        ">" to "\n> ",
+        "- " to "\n- ",
+        "---" to "\n\n---\n\n",
+        "[ ]" to "[текст](url)",
+        "$$" to "\n$$\n\n$$\n",
+        "^" to "^{}",
+        "_" to "_{}",
+        "\\" to "\\"
+    )
+
+    Surface(
+        tonalElevation = 3.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            symbols.forEach { (label, insert) ->
+                TextButton(
+                    onClick = { onInsert(insert) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Text(
+                        label,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
             }
         }

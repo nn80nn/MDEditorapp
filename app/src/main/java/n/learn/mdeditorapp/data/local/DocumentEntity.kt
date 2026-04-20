@@ -5,5 +5,6 @@ data class DocumentEntity(
     val name: String,
     val filePath: String,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val remoteId: Int? = null
 )

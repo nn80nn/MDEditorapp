@@ -69,6 +69,10 @@ class LocalStorage(context: Context) {
         loadDocuments().find { it.id == id }
     }
 
+    suspend fun getDocumentByName(name: String): DocumentEntity? = withContext(Dispatchers.IO) {
+        loadDocuments().find { it.name == name }
+    }
+
     // Drafts
 
     private fun loadDrafts(): MutableMap<Int, DraftEntity> {
