@@ -2,21 +2,7 @@ package n.learn.mdeditorapp.util
 
 object MarkdownHtmlConverter {
 
-    // filesDir — абсолютный путь к filesDir приложения, нужен для локальных картинок
-    fun toHtml(markdown: String, filesDir: String? = null): String {
-        // заменяем relative пути изображений на абсолютные file:// URI
-        val processedMarkdown = if (filesDir != null) {
-            markdown.replace(
-                Regex("!\\[([^\\]]*)\\]\\((images/[^)]+)\\)")
-            ) { match ->
-                val alt = match.groupValues[1]
-                val relativePath = match.groupValues[2]
-                "![$alt](file://$filesDir/$relativePath)"
-            }
-        } else {
-            markdown
-        }
-
+    fun toHtml(markdown: String): String {
         return """
             <!DOCTYPE html>
             <html>
@@ -45,7 +31,7 @@ object MarkdownHtmlConverter {
                 <div id="content"></div>
                 <script>
                     var md = window.markdownit({ html: false, linkify: true, typographer: true });
-                    var raw = atob("${java.util.Base64.getEncoder().encodeToString(processedMarkdown.toByteArray())}");
+                    var raw = atob("${java.util.Base64.getEncoder().encodeToString(markdown.toByteArray())}");
                     document.getElementById('content').innerHTML = md.render(raw);
                     if (window.MathJax) MathJax.typeset();
                 </script>

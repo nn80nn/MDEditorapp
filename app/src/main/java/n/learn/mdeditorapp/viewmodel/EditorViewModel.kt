@@ -3,12 +3,14 @@ package n.learn.mdeditorapp.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import n.learn.mdeditorapp.data.local.DocumentEntity
 import n.learn.mdeditorapp.data.local.DraftEntity
 import n.learn.mdeditorapp.data.local.LocalStorage
@@ -51,13 +53,18 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             currentDoc = doc
             _documentName.value = doc.name
 
+            val file = File(doc.filePath)
+            val savedContent = if (file.exists()) file.readText() else ""
             val draft = storage.getDraft(docId)
-            if (draft != null) {
+
+            if (draft != null && draft.content != savedContent) {
+                // черновик отличается от сохранённого — спросить у пользователя
                 _hasDraft.value = true
                 _content.value = draft.content
             } else {
-                val file = File(doc.filePath)
-                _content.value = if (file.exists()) file.readText() else ""
+                // черновика нет или он совпадает с файлом — просто открываем файл
+                _content.value = savedContent
+                if (draft != null) storage.deleteDraft(docId)
             }
             startAutosave()
         }
@@ -90,12 +97,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun saveNow() {
-        viewModelScope.launch {
-            val doc = currentDoc ?: return@launch
-            File(doc.filePath).writeText(_content.value)
-            storage.deleteDraft(doc.id)
-            storage.updateDocument(doc.copy(updatedAt = System.currentTimeMillis()))
-        }
+        viewModelScope.launch { doSave() }
+    }
+
+    private suspend fun doSave() {
+        val doc = currentDoc ?: return
+        File(doc.filePath).writeText(_content.value)
+        storage.deleteDraft(doc.id)
+        storage.updateDocument(doc.copy(updatedAt = System.currentTimeMillis()))
     }
 
     fun uploadToServer() {
@@ -151,6 +160,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     override fun onCleared() {
         super.onCleared()
         autosaveJob?.cancel()
-        saveNow()
+        // runBlocking гарантирует что сохранение завершится до уничтожения ViewModel
+        runBlocking(Dispatchers.IO) { doSave() }
     }
 }
