@@ -8,8 +8,7 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
-    // для эмулятора 10.0.2.2 — это localhost хоста
-    private const val BASE_URL = "http://10.0.2.2:8080/"
+    private const val BASE_URL = "https://mdeditor.remess.org/"
 
     private val client = OkHttpClient.Builder()
         .addInterceptor(HttpLoggingInterceptor().apply {
