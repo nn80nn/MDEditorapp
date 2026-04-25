@@ -73,6 +73,10 @@ class LocalStorage(context: Context) {
         loadDocuments().find { it.name == name }
     }
 
+    suspend fun getDocumentByRemoteId(remoteId: Int): DocumentEntity? = withContext(Dispatchers.IO) {
+        loadDocuments().find { it.remoteId == remoteId }
+    }
+
     // Drafts
 
     private fun loadDrafts(): MutableMap<Int, DraftEntity> {

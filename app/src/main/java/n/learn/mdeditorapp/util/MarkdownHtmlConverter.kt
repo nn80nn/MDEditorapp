@@ -31,7 +31,8 @@ object MarkdownHtmlConverter {
                 <div id="content"></div>
                 <script>
                     var md = window.markdownit({ html: false, linkify: true, typographer: true });
-                    var raw = atob("${java.util.Base64.getEncoder().encodeToString(markdown.toByteArray())}");
+                    var bytes = Uint8Array.from(atob("${java.util.Base64.getEncoder().encodeToString(markdown.toByteArray(Charsets.UTF_8))}"), function(c) { return c.charCodeAt(0); });
+                    var raw = new TextDecoder('utf-8').decode(bytes);
                     document.getElementById('content').innerHTML = md.render(raw);
                     if (window.MathJax) MathJax.typeset();
                 </script>

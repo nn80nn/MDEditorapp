@@ -3,6 +3,10 @@ package n.learn.mdeditorapp.ui.screens
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.print.PrintAttributes
+import android.print.PrintManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
@@ -29,6 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import n.learn.mdeditorapp.ui.components.FormulaDialog
 import n.learn.mdeditorapp.ui.components.MarkdownPreviewView
+import n.learn.mdeditorapp.util.MarkdownHtmlConverter
 import n.learn.mdeditorapp.viewmodel.EditorViewModel
 import java.io.File
 import java.io.FileOutputStream
@@ -141,6 +146,9 @@ fun EditorScreen(
                     IconButton(onClick = { vm.uploadToServer() }) {
                         Icon(Icons.Default.CloudUpload, contentDescription = "загрузить на сервер")
                     }
+                    IconButton(onClick = { exportToPdf(context, docName, content) }) {
+                        Icon(Icons.Default.PictureAsPdf, contentDescription = "экспорт в PDF")
+                    }
                 }
             )
         },
@@ -205,6 +213,27 @@ fun EditorScreen(
             onDismiss = { showFormulaDialog = false }
         )
     }
+}
+
+private fun exportToPdf(context: android.content.Context, docName: String, markdown: String) {
+    val html = MarkdownHtmlConverter.toHtml(markdown)
+    val printWebView = WebView(context)
+    printWebView.settings.javaScriptEnabled = true
+    printWebView.webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String) {
+            val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as PrintManager
+            val jobName = docName.ifBlank { "document" }
+            val printAdapter = view.createPrintDocumentAdapter(jobName)
+            printManager.print(jobName, printAdapter, PrintAttributes.Builder().build())
+        }
+    }
+    printWebView.loadDataWithBaseURL(
+        "file://${context.filesDir}/",
+        html,
+        "text/html",
+        "UTF-8",
+        null
+    )
 }
 
 @Composable

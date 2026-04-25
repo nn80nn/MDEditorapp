@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import n.learn.mdeditorapp.data.local.DocumentEntity
+import n.learn.mdeditorapp.data.remote.RemoteDocument
 import n.learn.mdeditorapp.viewmodel.HomeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,7 +33,15 @@ fun HomeScreen(
     var newDocName by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf(0) }
     val localDocs by vm.localDocuments.collectAsStateWithLifecycle(initialValue = emptyList())
+    val remoteDocs by vm.remoteDocuments.collectAsStateWithLifecycle()
+    val isLoadingRemote by vm.isLoadingRemote.collectAsStateWithLifecycle()
+    val downloading by vm.downloading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
+
+    // подтверждение удаления локального документа
+    var docToDelete by remember { mutableStateOf<DocumentEntity?>(null) }
+    // подтверждение удаления с сервера
+    var remoteToDelete by remember { mutableStateOf<RemoteDocument?>(null) }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -49,6 +58,11 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("MD Editor") },
                 actions = {
+                    if (selectedTab == 1) {
+                        IconButton(onClick = { vm.loadRemoteDocuments() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "обновить")
+                        }
+                    }
                     IconButton(onClick = { filePicker.launch("*/*") }) {
                         Icon(Icons.Default.FolderOpen, contentDescription = "открыть файл")
                     }
@@ -59,8 +73,10 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showNewDocDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = "создать")
+            if (selectedTab == 0) {
+                FloatingActionButton(onClick = { showNewDocDialog = true }) {
+                    Icon(Icons.Default.Add, contentDescription = "создать")
+                }
             }
         }
     ) { padding ->
@@ -86,12 +102,24 @@ fun HomeScreen(
             }
 
             when (selectedTab) {
-                0 -> LocalDocsList(docs = localDocs, onOpen = onOpenDocument, onDelete = { vm.deleteDocument(it) })
-                1 -> RemoteTabContent(onOpenRemoteDocs = onOpenRemoteDocs)
+                0 -> LocalDocsList(
+                    docs = localDocs,
+                    onOpen = onOpenDocument,
+                    onDelete = { docToDelete = it }
+                )
+                1 -> RemoteDocsList(
+                    docs = remoteDocs,
+                    localDocs = localDocs,
+                    isLoading = isLoadingRemote,
+                    downloading = downloading,
+                    onDownload = { doc -> vm.downloadDocument(doc, onOpened = onOpenDocument) },
+                    onDelete = { remoteToDelete = it }
+                )
             }
         }
     }
 
+    // диалог создания документа
     if (showNewDocDialog) {
         AlertDialog(
             onDismissRequest = { showNewDocDialog = false },
@@ -113,6 +141,48 @@ fun HomeScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showNewDocDialog = false }) { Text("Отмена") }
+            }
+        )
+    }
+
+    // диалог подтверждения удаления локального документа
+    docToDelete?.let { doc ->
+        AlertDialog(
+            onDismissRequest = { docToDelete = null },
+            title = { Text("Удалить документ?") },
+            text = { Text("«${doc.name}» будет удалён с устройства.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.deleteDocument(doc)
+                        docToDelete = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Удалить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { docToDelete = null }) { Text("Отмена") }
+            }
+        )
+    }
+
+    // диалог подтверждения удаления с сервера
+    remoteToDelete?.let { doc ->
+        AlertDialog(
+            onDismissRequest = { remoteToDelete = null },
+            title = { Text("Удалить с сервера?") },
+            text = { Text("«${doc.name}» будет удалён с сервера. Локальная копия останется.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.deleteFromServer(doc.id)
+                        remoteToDelete = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Удалить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { remoteToDelete = null }) { Text("Отмена") }
             }
         )
     }
@@ -143,6 +213,23 @@ private fun LocalDocsList(
                         style = MaterialTheme.typography.bodySmall
                     )
                 },
+                leadingContent = {
+                    if (doc.remoteId != null) {
+                        Icon(
+                            Icons.Default.Cloud,
+                            contentDescription = "сохранён на сервере",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.InsertDriveFile,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                },
                 trailingContent = {
                     IconButton(onClick = { onDelete(doc) }) {
                         Icon(Icons.Default.Delete, contentDescription = "удалить")
@@ -156,12 +243,74 @@ private fun LocalDocsList(
 }
 
 @Composable
-private fun RemoteTabContent(onOpenRemoteDocs: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Документы на сервере", style = MaterialTheme.typography.bodyLarge)
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(onClick = onOpenRemoteDocs) { Text("Открыть") }
+private fun RemoteDocsList(
+    docs: List<RemoteDocument>,
+    localDocs: List<DocumentEntity>,
+    isLoading: Boolean,
+    downloading: Int?,
+    onDownload: (RemoteDocument) -> Unit,
+    onDelete: (RemoteDocument) -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        when {
+            isLoading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            docs.isEmpty() -> Text(
+                "Нет документов на сервере",
+                modifier = Modifier.align(Alignment.Center),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            else -> LazyColumn {
+                items(docs) { doc ->
+                    val isSynced = localDocs.any { it.remoteId == doc.id }
+                    ListItem(
+                        headlineContent = {
+                            Text(doc.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        },
+                        supportingContent = {
+                            Text(
+                                buildString {
+                                    append("${doc.fileSize / 1024} КБ • ${doc.updatedAt.take(10)}")
+                                    if (isSynced) append(" • скачан")
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isSynced) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                if (isSynced) Icons.Default.CloudDone else Icons.Default.CloudDownload,
+                                contentDescription = null,
+                                tint = if (isSynced) MaterialTheme.colorScheme.primary
+                                       else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        },
+                        trailingContent = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (downloading == doc.id) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    IconButton(onClick = { onDownload(doc) }) {
+                                        Icon(Icons.Default.Download, contentDescription = "скачать")
+                                    }
+                                }
+                                IconButton(onClick = { onDelete(doc) }) {
+                                    Icon(
+                                        Icons.Default.DeleteOutline,
+                                        contentDescription = "удалить с сервера",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        }
+                    )
+                    HorizontalDivider()
+                }
+            }
         }
     }
 }
