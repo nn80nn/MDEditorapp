@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "n.learn.mdeditorapp"
+    namespace = "org.remess.mdeditor"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -12,7 +12,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "n.learn.mdeditorapp"
+        applicationId = "org.remess.mdeditor"
         minSdk = 28
         targetSdk = 36
         versionCode = 2

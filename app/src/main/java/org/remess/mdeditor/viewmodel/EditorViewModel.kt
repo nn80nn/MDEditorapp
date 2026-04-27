@@ -1,0 +1,166 @@
+package org.remess.mdeditor.viewmodel
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import org.remess.mdeditor.data.local.DocumentEntity
+import org.remess.mdeditor.data.local.DraftEntity
+import org.remess.mdeditor.data.local.LocalStorage
+import org.remess.mdeditor.data.remote.RetrofitClient
+import org.remess.mdeditor.util.SessionManager
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+
+class EditorViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val storage = LocalStorage.getInstance(application)
+    private val session = SessionManager(application)
+    private val api = RetrofitClient.api
+
+    private val _content = MutableStateFlow("")
+    val content: StateFlow<String> = _content
+
+    private val _documentName = MutableStateFlow("")
+    val documentName: StateFlow<String> = _documentName
+
+    private val _showPreview = MutableStateFlow(false)
+    val showPreview: StateFlow<Boolean> = _showPreview
+
+    private val _uploadStatus = MutableStateFlow<String?>(null)
+    val uploadStatus: StateFlow<String?> = _uploadStatus
+
+    private val _hasDraft = MutableStateFlow(false)
+    val hasDraft: StateFlow<Boolean> = _hasDraft
+
+    private var currentDoc: DocumentEntity? = null
+    private var autosaveJob: Job? = null
+
+    fun loadDocument(docId: Int) {
+        if (currentDoc?.id == docId) return  // уже загружен, не показывать черновик повторно
+        viewModelScope.launch {
+            val doc = storage.getDocumentById(docId) ?: return@launch
+            currentDoc = doc
+            _documentName.value = doc.name
+
+            val file = File(doc.filePath)
+            val savedContent = if (file.exists()) file.readText() else ""
+            val draft = storage.getDraft(docId)
+
+            if (draft != null && draft.content != savedContent) {
+                // черновик отличается от сохранённого — спросить у пользователя
+                _hasDraft.value = true
+                _content.value = draft.content
+            } else {
+                // черновика нет или он совпадает с файлом — просто открываем файл
+                _content.value = savedContent
+                if (draft != null) storage.deleteDraft(docId)
+            }
+            startAutosave()
+        }
+    }
+
+    fun restoreFromDraft() {
+        _hasDraft.value = false
+    }
+
+    fun discardDraft() {
+        viewModelScope.launch {
+            currentDoc?.let { storage.deleteDraft(it.id) }
+            val doc = currentDoc ?: return@launch
+            val file = File(doc.filePath)
+            _content.value = if (file.exists()) file.readText() else ""
+            _hasDraft.value = false
+        }
+    }
+
+    fun updateContent(text: String) {
+        _content.value = text
+    }
+
+    fun togglePreview() {
+        _showPreview.value = !_showPreview.value
+    }
+
+    fun insertText(text: String) {
+        _content.value = _content.value + text
+    }
+
+    fun saveNow() {
+        viewModelScope.launch { doSave() }
+    }
+
+    private suspend fun doSave() {
+        val doc = currentDoc ?: return
+        File(doc.filePath).writeText(_content.value)
+        storage.deleteDraft(doc.id)
+        storage.updateDocument(doc.copy(updatedAt = System.currentTimeMillis()))
+    }
+
+    fun uploadToServer() {
+        val doc = currentDoc ?: return
+        val token = session.getBearerToken() ?: run {
+            _uploadStatus.value = "нужно войти в аккаунт"
+            return
+        }
+        viewModelScope.launch {
+            saveNow()
+            try {
+                // если уже загружали — удаляем старую версию на сервере
+                if (doc.remoteId != null) {
+                    api.deleteDocument(token, doc.remoteId)
+                }
+                val file = File(doc.filePath)
+                val namePart = doc.name.toRequestBody("text/plain".toMediaTypeOrNull())
+                val filePart = MultipartBody.Part.createFormData(
+                    "file", file.name,
+                    file.asRequestBody("text/markdown".toMediaTypeOrNull())
+                )
+                val resp = api.uploadDocument(token, namePart, filePart)
+                if (resp.isSuccessful) {
+                    val remoteDoc = resp.body()
+                    if (remoteDoc != null) {
+                        val updated = doc.copy(remoteId = remoteDoc.id, updatedAt = System.currentTimeMillis())
+                        currentDoc = updated
+                        storage.updateDocument(updated)
+                    }
+                    _uploadStatus.value = "загружено на сервер"
+                } else {
+                    _uploadStatus.value = "ошибка загрузки"
+                }
+            } catch (e: Exception) {
+                _uploadStatus.value = "нет соединения"
+            }
+        }
+    }
+
+    fun clearUploadStatus() { _uploadStatus.value = null }
+
+    private fun startAutosave() {
+        autosaveJob?.cancel()
+        autosaveJob = viewModelScope.launch {
+            while (isActive) {
+                delay(10_000)
+                val doc = currentDoc ?: continue
+                storage.saveDraft(DraftEntity(documentId = doc.id, content = _content.value))
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        autosaveJob?.cancel()
+        // runBlocking гарантирует что сохранение завершится до уничтожения ViewModel
+        runBlocking(Dispatchers.IO) { doSave() }
+    }
+}
