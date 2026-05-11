@@ -10,7 +10,7 @@ import org.remess.mdeditor.ui.screens.EditorScreen
 import org.remess.mdeditor.ui.screens.HomeScreen
 import org.remess.mdeditor.ui.screens.LoginScreen
 import org.remess.mdeditor.ui.screens.RegisterScreen
-import org.remess.mdeditor.ui.theme.MDEditorTheme
+import org.remess.mdeditor.ui.theme.MDEditorappTheme
 
 // UI тест-кейсы №1–10
 @RunWith(AndroidJUnit4::class)
@@ -24,7 +24,7 @@ class AppUiTest {
     @Test
     fun tc1_registerScreen_showsRegisterButton() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 RegisterScreen(onRegisterSuccess = {}, onBack = {})
             }
         }
@@ -34,7 +34,7 @@ class AppUiTest {
     @Test
     fun tc1_registerScreen_hasEmailAndPasswordFields() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 RegisterScreen(onRegisterSuccess = {}, onBack = {})
             }
         }
@@ -47,7 +47,7 @@ class AppUiTest {
     @Test
     fun tc2_loginScreen_showsLoginButton() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 LoginScreen(onLoginSuccess = {}, onGoRegister = {})
             }
         }
@@ -57,7 +57,7 @@ class AppUiTest {
     @Test
     fun tc2_loginScreen_hasEmailAndPasswordFields() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 LoginScreen(onLoginSuccess = {}, onGoRegister = {})
             }
         }
@@ -70,7 +70,7 @@ class AppUiTest {
     @Test
     fun tc3_loginScreen_clickLoginWithEmptyFields_showsError() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 LoginScreen(onLoginSuccess = {}, onGoRegister = {})
             }
         }
@@ -83,7 +83,7 @@ class AppUiTest {
     @Test
     fun tc4_homeScreen_fabIsDisplayed() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 HomeScreen(onOpenDocument = {}, onOpenRemoteDocs = {}, onLogout = {})
             }
         }
@@ -93,7 +93,7 @@ class AppUiTest {
     @Test
     fun tc4_homeScreen_fabClick_showsCreateDialog() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 HomeScreen(onOpenDocument = {}, onOpenRemoteDocs = {}, onLogout = {})
             }
         }
@@ -106,7 +106,7 @@ class AppUiTest {
     @Test
     fun tc5_homeScreen_localTabIsDisplayed() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 HomeScreen(onOpenDocument = {}, onOpenRemoteDocs = {}, onLogout = {})
             }
         }
@@ -118,7 +118,7 @@ class AppUiTest {
     @Test
     fun tc6_editorScreen_hasUploadButton() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 EditorScreen(docId = -1, onOpenChartBuilder = {}, onBack = {})
             }
         }
@@ -130,7 +130,7 @@ class AppUiTest {
     @Test
     fun tc7_homeScreen_hasRemoteTab() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 HomeScreen(onOpenDocument = {}, onOpenRemoteDocs = {}, onLogout = {})
             }
         }
@@ -142,7 +142,7 @@ class AppUiTest {
     @Test
     fun tc8_editorScreen_hasPhotoButton() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 EditorScreen(docId = -1, onOpenChartBuilder = {}, onBack = {})
             }
         }
@@ -154,7 +154,7 @@ class AppUiTest {
     @Test
     fun tc9_editorScreen_hasFormulaButton() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 EditorScreen(docId = -1, onOpenChartBuilder = {}, onBack = {})
             }
         }
@@ -166,7 +166,7 @@ class AppUiTest {
     @Test
     fun tc10_editorScreen_hasChartButton() {
         rule.setContent {
-            MDEditorTheme {
+            MDEditorappTheme {
                 EditorScreen(docId = -1, onOpenChartBuilder = {}, onBack = {})
             }
         }
